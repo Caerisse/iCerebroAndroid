@@ -12,6 +12,7 @@ package com.icerebro.icerebro.ssh;
 
 import android.util.Log;
 
+import com.icerebro.icerebro.ui.tunnel.TunnelActivity;
 import com.jcraft.jsch.ChannelDirectTCPIP;
 import com.jcraft.jsch.Session;
 
@@ -34,31 +35,38 @@ class ReverseDynamicForwarder implements Runnable {
 
     private class ReverseDynamicForward extends ProxyServer {
         int port;
+        TunnelActivity.Monitor monitor;
 
-        ReverseDynamicForward(int port) {
+        ReverseDynamicForward(int port, TunnelActivity.Monitor monitor) {
             super(new ServerAuthenticatorNone());
             this.port = port;
+            this.monitor = monitor;
             setLog(System.out);
         }
 
-        ReverseDynamicForward(Socket s, int port) {
+        ReverseDynamicForward(Socket s, int port, TunnelActivity.Monitor monitor) {
             super(new ServerAuthenticatorNone(), s);
             this.port = port;
+            this.monitor = monitor;
             setLog(System.out);
         }
 
         @Override
         public void start(int port, int backlog, InetAddress localIP) throws IOException {
             ss = new ServerSocket(port, backlog, localIP);
-            Log.i(TAG,"Starting SOCKS Proxy on:"+ss.getInetAddress().getHostAddress()+":"
-                    +ss.getLocalPort());
+            Log.i(TAG,"Starting SOCKS Proxy on: " + ss.getInetAddress().getHostAddress() + ":"
+                    + ss.getLocalPort());
+            monitor.writeToMonitor("Starting SOCKS Proxy on: " + ss.getInetAddress().getHostAddress() + ":"
+                    + ss.getLocalPort());
 
             //noinspection InfiniteLoopStatement
             while (true) {
                 Socket s = ss.accept();
-                Log.i(TAG,"Accepted from:"+s.getInetAddress().getHostName()+":"
+                Log.i(TAG,"Accepted from: "+s.getInetAddress().getHostName()+":"
                         +s.getPort());
-                ReverseDynamicForward rdf = new ReverseDynamicForward(s, port);
+                monitor.writeToMonitor("Accepted from: "+s.getInetAddress().getHostName()+":"
+                        +s.getPort());
+                ReverseDynamicForward rdf = new ReverseDynamicForward(s, port, monitor);
                 (new Thread(rdf)).start();
             }
         }
@@ -80,7 +88,8 @@ class ReverseDynamicForwarder implements Runnable {
                 } else {
                     s = new SocksSocket(proxy, msg.ip, msg.port);
                 }
-                log("Connected to " + s.getInetAddress() + ":" + s.getPort());
+                Log.i(TAG,"Connected to " + s.getInetAddress() + ":" + s.getPort());
+                monitor.writeToMonitor("Connected to " + s.getInetAddress() + ":" + s.getPort());
 
                 iSock5Cmd = CProxy.SOCKS_SUCCESS; iSock4Msg = Socks4Message.REPLY_OK;
                 sIp = s.getInetAddress();
@@ -88,7 +97,8 @@ class ReverseDynamicForwarder implements Runnable {
 
             }
             catch (Exception sE) {
-                log("Failed connecting to remote socket. Exception: " + sE.getLocalizedMessage());
+                Log.i(TAG,"Failed connecting to remote socket. Exception: " + sE.getLocalizedMessage());
+                monitor.writeToMonitor("Failed connecting to remote socket. Exception: " + sE.getLocalizedMessage());
 
                 //TBD Pick proper socks error for corresponding socket error, below is too generic
                 iSock5Cmd = CProxy.SOCKS_CONNECTION_REFUSED; iSock4Msg = Socks4Message.REPLY_NO_CONNECT;
@@ -106,6 +116,7 @@ class ReverseDynamicForwarder implements Runnable {
                 startPipe(s);
             }
             else {
+                monitor.writeToMonitor("onConnect() Failed to create Socket()");
                 throw (new RuntimeException("onConnect() Failed to create Socket()"));
             }
 
@@ -122,8 +133,8 @@ class ReverseDynamicForwarder implements Runnable {
     private Exception e = null;
 
 
-    ReverseDynamicForwarder(int port) {
-        rdf = new ReverseDynamicForward(port);
+    ReverseDynamicForwarder(int port, TunnelActivity.Monitor monitor) {
+        rdf = new ReverseDynamicForward(port, monitor);
         ReverseDynamicForward.setLog(System.out);
         ServerThread = new Thread(this, "ReverseDynamicForwarder");
         ServerThread.start();

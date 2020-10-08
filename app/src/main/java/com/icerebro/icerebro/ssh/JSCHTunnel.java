@@ -2,6 +2,8 @@ package com.icerebro.icerebro.ssh;
 
 import android.os.Environment;
 import android.util.Log;
+
+import com.icerebro.icerebro.ui.tunnel.TunnelActivity;
 import com.jcraft.jsch.JSch;
 import com.jcraft.jsch.JSchException;
 import com.jcraft.jsch.KeyPair;
@@ -97,11 +99,11 @@ public class JSCHTunnel {
         return keys;
     }
 
-    public void connect(String host, int port, String user) throws JSchException {
-        connect(host, port, user, null);
+    public void connect(String host, int port, String user, TunnelActivity.Monitor monitor) throws JSchException {
+        connect(host, port, user, null, monitor);
     }
 
-    public void connect(String host, int port, String user, String password) throws JSchException {
+    public void connect(String host, int port, String user, String password, TunnelActivity.Monitor monitor) throws JSchException {
         Log.i(TAG, "Connecting to: " + user + "@" + host + ":" + port);
         session = jsch.getSession(user, host, port);
         if (password != null) {
@@ -122,37 +124,42 @@ public class JSCHTunnel {
         session.connect();
         if (session.isConnected()){
             Log.i(TAG, "Connected successfully");
+            monitor.writeTitle("Connected to " + host);
         } else {
             Log.e(TAG,"Failed to connect");
+            monitor.writeTitle("Failed to connect to " + host);
         }
     }
 
-    public void startPortForwardingL(int tunnelLocalPort, String tunnelRemoteHost, int tunnelRemotePort)
+    public void startPortForwardingL(int tunnelLocalPort, String tunnelRemoteHost, int tunnelRemotePort, TunnelActivity.Monitor monitor)
             throws JSchException
     {
-        System.out.println("Initializing Local Port forwarding ");
+        Log.i(TAG, "Initializing Local Port forwarding ");
         session.setPortForwardingL(tunnelLocalPort, tunnelRemoteHost, tunnelRemotePort);
-        System.out.println("Port forward successful forwarding: " +
+        Log.i(TAG, "Port forward successful forwarding: " +
                 "localhost:" + tunnelLocalPort + " -> " + tunnelRemoteHost + ":" + tunnelRemotePort);
+        monitor.writeTitle("localhost:" + tunnelLocalPort + " -> " + tunnelRemoteHost + ":" + tunnelRemotePort);
     }
 
-    public void startPortForwardingR(int tunnelRemotePort, String tunnelRemoteHost, int tunnelLocalPort)
+    public void startPortForwardingR(int tunnelRemotePort, String tunnelRemoteHost, int tunnelLocalPort, TunnelActivity.Monitor monitor)
             throws JSchException
     {
         Log.i(TAG, "Initializing Remote Port forwarding ");
         session.setPortForwardingR(tunnelRemotePort, "localhost", tunnelLocalPort);
         Log.i(TAG, "Port forward successful forwarding: " +
                 tunnelRemoteHost + ":" + tunnelRemotePort  + " -> " + "localhost:" + tunnelLocalPort);
+        monitor.writeTitle(tunnelRemoteHost + ":" + tunnelRemotePort  + " -> " + "localhost:" + tunnelLocalPort);
     }
 
-    public void startDynamicPortForwarding(int port, Session session) throws JSchException {
+    public void startDynamicPortForwarding(int port, Session session, TunnelActivity.Monitor monitor) throws JSchException {
         df = new DynamicForwarder(port, session);
         df.run();
     }
 
-    public void startReverseDynamicPortForwarding(int tunnelRemotePort, String tunnelRemoteHost, int tunnelLocalPort) throws JSchException {
-        startPortForwardingR(tunnelRemotePort, tunnelRemoteHost, tunnelLocalPort);
-        rdf = new ReverseDynamicForwarder(tunnelLocalPort);
+    public void startReverseDynamicPortForwarding(int tunnelRemotePort, String tunnelRemoteHost, int tunnelLocalPort, TunnelActivity.Monitor monitor)
+            throws JSchException {
+        startPortForwardingR(tunnelRemotePort, tunnelRemoteHost, tunnelLocalPort, monitor);
+        rdf = new ReverseDynamicForwarder(tunnelLocalPort, monitor);
         rdf.run();
     }
 

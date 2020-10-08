@@ -10,6 +10,11 @@ import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.os.Bundle;
 import android.util.Log;
+import android.view.View;
+import android.widget.Button;
+import android.widget.ProgressBar;
+import android.widget.ScrollView;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import com.icerebro.icerebro.R;
@@ -44,6 +49,14 @@ public class TunnelActivity extends AppCompatActivity {
     private SharedPreferences SP;
     private iCerebroService client;
 
+    private Monitor monitor;
+
+    private TextView title;
+    private ScrollView monitor_scroll_view;
+    private TextView monitor_text;
+    private Button button;
+    private ProgressBar progressBar;
+
     private String user = "caerisse";
     private int ssh_port = 7101;
     private int local_port = 8080;
@@ -53,6 +66,7 @@ public class TunnelActivity extends AppCompatActivity {
 
     private ExecutorService executor;
     private boolean running = false;
+    private boolean stopping = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -64,10 +78,90 @@ public class TunnelActivity extends AppCompatActivity {
         String authToken = SP.getString("authToken",null);
         client = ServiceGenerator.createService(authToken);
 
+        title = findViewById(R.id.title);
+        monitor_scroll_view = findViewById(R.id.monitor);
+        monitor_text = findViewById(R.id.monitor_text);
+        button = findViewById(R.id.start_stop);
+        button.setOnClickListener(start_stop);
+        progressBar = findViewById(R.id.loading);
+
+        monitor = new Monitor();
+    }
+
+    private View.OnClickListener start_stop = new View.OnClickListener() {
+        @Override
+        public void onClick(View v) {
+            if (running && !stopping) {
+                monitor.writeToMonitor("Stopping");
+                stop();
+            } else if (!running) {
+                monitor.writeToMonitor("Starting");
+                start();
+            }
+        }
+    };
+
+    public class Monitor {
+        public void writeToMonitor(String line){
+            Log.d("writeToMonitor", line);
+            synchronized (this) {
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        // Todo append and rotate text as in terminal output
+                        String new_text = monitor_text.getText() + "\n" + line;
+                        monitor_text.setText(new_text);
+                        monitor_scroll_view.fullScroll(View.FOCUS_DOWN);
+                    }
+                });
+            }
+        }
+
+        public void writeTitle(String new_title){
+            Log.d("writeTitle", new_title);
+            synchronized (this) {
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        title.setText(new_title);
+                    }
+                });
+            }
+        }
+
+        public void writeButton(String text){
+            Log.d("writeButton", text);
+            synchronized (this) {
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        button.setText(text);
+                    }
+                });
+            }
+        }
+
+        public void setProgressBarVisibility(int visibility) {
+            Log.d("setProgressBarVis", "" + visibility);
+            synchronized (this) {
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        progressBar.setVisibility(visibility);
+                    }
+                });
+            }
+        }
+    }
+
+    private void start() {
         if ( isNotPermissionGranted(Manifest.permission.READ_EXTERNAL_STORAGE) || isNotPermissionGranted(Manifest.permission.WRITE_EXTERNAL_STORAGE) ){
             requestPermission(new String[]{Manifest.permission.READ_EXTERNAL_STORAGE, Manifest.permission.WRITE_EXTERNAL_STORAGE});
         }
-
+        running = true;
+        progressBar.setVisibility(View.VISIBLE);
+        monitor.writeTitle("Starting");
+        monitor.writeToMonitor("Getting or generating public key");
         tunnel = new JSCHTunnel();
         tunnel.setRootDir("iCerebro");
         File[] keys = tunnel.generateAuthKeys();
@@ -85,10 +179,16 @@ public class TunnelActivity extends AppCompatActivity {
         }
     }
 
+    private void stop() {
+        progressBar.setVisibility(View.VISIBLE);
+        running = false;
+        stopping = true;
+    }
+
     @Override
     protected void onStop() {
         super.onStop();
-        running = false;
+        stop();
     }
 
     private boolean isNotPermissionGranted(String permission) {
@@ -124,6 +224,9 @@ public class TunnelActivity extends AppCompatActivity {
     }
 
     public void savePubKey(String pub_key_string) {
+        monitor.writeToMonitor("Sending public key to server");
+        monitor.writeToMonitor("pub_key: " + pub_key_string);
+
         PubKey pubKey = new PubKey();
         pubKey.setKey(pub_key_string);
 
@@ -132,6 +235,7 @@ public class TunnelActivity extends AppCompatActivity {
             @Override
             public void onResponse(@NotNull Call<PubKey> call, @NotNull Response<PubKey> response) {
                 if (!response.isSuccessful() && response.errorBody() != null) {
+                    monitor.writeToMonitor("ERROR sending public key to server");
                     try {
                         JSONObject error = new JSONObject(response.errorBody().string());
                         // TODO: handle error
@@ -139,6 +243,7 @@ public class TunnelActivity extends AppCompatActivity {
                         Log.e(TAG,"savePubKey - onResponse: " +  e.getMessage());
                     }
                 } else {
+                    monitor.writeToMonitor("Sending public key to server -> OK");
                     getProxyPort();
                 }
             }
@@ -146,16 +251,19 @@ public class TunnelActivity extends AppCompatActivity {
             @Override
             public void onFailure(@NotNull Call<PubKey> call, @NotNull Throwable t) {
                 Log.e(TAG,"savePubKey - onFailure: " + t.getMessage());
+                monitor.writeToMonitor("ERROR sending public key to server");
             }
         });
     }
 
     public void getProxyPort() {
+        monitor.writeToMonitor("Getting proxy port");
         Call<ProxyPort> call = client.getProxyPort();
         call.enqueue(new Callback<ProxyPort>() {
             @Override
             public void onResponse(@NotNull Call<ProxyPort> call, @NotNull Response<ProxyPort> response) {
                 if (!response.isSuccessful() && response.errorBody() != null) {
+                    monitor.writeToMonitor("ERROR getting proxy port");
                     try {
                         JSONObject error = new JSONObject(response.errorBody().string());
                         // TODO: handle error
@@ -164,6 +272,7 @@ public class TunnelActivity extends AppCompatActivity {
                     }
                 } else {
                     if (response.body() != null) {
+                        monitor.writeToMonitor("Getting proxy port -> OK");
                         remote_port = response.body().getPort();
                         host = response.body().getHost();
                         executor = Executors.newSingleThreadExecutor();
@@ -184,12 +293,15 @@ public class TunnelActivity extends AppCompatActivity {
 
     Runnable sshConnection = () -> {
         try {
-            tunnel.connect(host, ssh_port, user);
-            tunnel.startReverseDynamicPortForwarding(remote_port, host, local_port);
-
-            running = true;
+            monitor.writeToMonitor("Starting SSH tunnel");
+            tunnel.connect(host, ssh_port, user, monitor);
+            tunnel.startReverseDynamicPortForwarding(remote_port, host, local_port, monitor);
+            monitor.writeButton("Stop");
+            monitor.setProgressBarVisibility(View.GONE);
+            monitor.writeToMonitor("SSH tunnel ready!");
             while (running) {
-                Log.d(TAG, "running");
+                monitor.setProgressBarVisibility(View.GONE);
+//                Log.d(TAG, "running");
                 Thread.sleep(10000);
             }
         } catch (JSchException e) {
@@ -198,9 +310,14 @@ public class TunnelActivity extends AppCompatActivity {
             Log.e(TAG, Arrays.toString(e.getStackTrace()));
         } catch (InterruptedException e) {
             Log.d(TAG, "sshConnection thread interrupted");
-        }finally {
+        } finally {
             if (tunnel != null) {
                 tunnel.stop();
+                stopping = false;
+                monitor.writeTitle("Inactive");
+                monitor.writeButton("Start");
+                monitor.writeToMonitor("Stopped");
+                monitor.setProgressBarVisibility(View.GONE);
             }
         }
     };
