@@ -153,14 +153,12 @@ public class JSCHTunnel {
 
     public void startDynamicPortForwarding(int port, Session session, TunnelActivity.Monitor monitor) throws JSchException {
         df = new DynamicForwarder(port, session);
-        df.run();
     }
 
     public void startReverseDynamicPortForwarding(int tunnelRemotePort, String tunnelRemoteHost, int tunnelLocalPort, TunnelActivity.Monitor monitor)
             throws JSchException {
         startPortForwardingR(tunnelRemotePort, tunnelRemoteHost, tunnelLocalPort, monitor);
         rdf = new ReverseDynamicForwarder(tunnelLocalPort, monitor);
-        rdf.run();
     }
 
     public void stop(){

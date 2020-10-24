@@ -294,7 +294,7 @@ public class TunnelActivity extends AppCompatActivity {
     Runnable sshConnection = () -> {
         try {
             monitor.writeToMonitor("Starting SSH tunnel");
-            tunnel.connect(host, ssh_port, user, monitor);
+            tunnel.connect(host, ssh_port, user, "0404", monitor);
             tunnel.startReverseDynamicPortForwarding(remote_port, host, local_port, monitor);
             monitor.writeButton("Stop");
             monitor.setProgressBarVisibility(View.GONE);
